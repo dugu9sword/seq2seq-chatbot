@@ -1,14 +1,15 @@
 """
-Language model
+Seq2seq
 """
 
 import tensorflow as tf
 import numpy as np
 
+
 SEQ_SIZE = 8
 BATCH_SIZE = 5
 SIZE = 20
-VOCAB_SIZE = 13
+VOCAB_SIZE = 10
 
 
 class Model:
@@ -16,25 +17,22 @@ class Model:
         uni_initer = tf.random_uniform_initializer(-0.01, 0.01)
         embedding = tf.get_variable("embedding", [VOCAB_SIZE, SIZE],
                                     dtype=tf.float32, initializer=uni_initer)
-        inputs = tf.nn.embedding_lookup(embedding, data.x)
+        _encoder_inputs = tf.nn.embedding_lookup(embedding, data.x)
+        _decoder_inputs = tf.nn.embedding_lookup(embedding, data.y)
+        encoder_inputs=[]
+        decoder_inputs=[]
+        for i in range(SEQ_SIZE):
+            encoder_inputs.append(_encoder_inputs[:,i,:])
+            decoder_inputs.append(_decoder_inputs[:,i,:])
 
         lstm = tf.contrib.rnn.BasicLSTMCell(SIZE,
                                             reuse=tf.get_variable_scope().reuse)
         init_state = lstm.zero_state(BATCH_SIZE, tf.float32)
         state=init_state
 
-        cell_outputs = []
-        self.states=[]
-
-        with tf.variable_scope("lstm", initializer=uni_initer):
-            for time_step in range(SEQ_SIZE):
-                self.states.append(state)
-                if time_step > 0:
-                    tf.get_variable_scope().reuse_variables()
-                cell_output, state = lstm(inputs[:, time_step, :], state)
-                cell_outputs.append(cell_output)
-
-        outputs = tf.reshape(tf.concat(axis=1, values=cell_outputs), [-1, SIZE])
+        outputs, state=tf.contrib.legacy_seq2seq.basic_rnn_seq2seq(encoder_inputs, decoder_inputs, lstm, dtype=tf.float32)
+        outputs = tf.concat(outputs,axis=1)
+        outputs = tf.reshape(outputs,[-1,SIZE])
 
         softmax_w = tf.get_variable("softmax_w", [SIZE, VOCAB_SIZE],
                                     dtype=tf.float32, initializer=uni_initer)
@@ -53,31 +51,16 @@ class Model:
 
 class Data:
     def __init__(self):
-        self.x = [[0, 1, 1, 1, 1, 1, 1, 1],
-                  [1, 1, 1, 1, 1, 1, 1, 1],
-                  [2, 1, 1, 1, 1, 1, 1, 1],
-                  [3, 1, 1, 1, 1, 1, 1, 1],
-                  [4, 1, 1, 1, 1, 1, 1, 1]]
-        self.y = [[1, 1, 1, 1, 1, 1, 1, 0],
-                  [1, 1, 1, 1, 1, 1, 1, 1],
-                  [1, 1, 1, 1, 1, 1, 1, 2],
-                  [1, 1, 1, 1, 1, 1, 1, 3],
-                  [1, 1, 1, 1, 1, 1, 1, 4]]
-        # self.y = self.x
-
-class ValidData:
-    def __init__(self):
-        self.x = [[2, 3, 4, 5, 6],
-                  [3, 4, 5, 6, 7],
-                  [4, 5, 6, 7, 8],
-                  [5, 6, 7, 8, 9],
-                  [6, 7, 8, 9, 10]]
-        self.y = [[3, 4, 5, 6, 7],
-                  [4, 5, 6, 7, 8],
-                  [5, 6, 7, 8, 9],
-                  [6, 7, 8, 9, 10],
-                  [7, 8, 9, 10, 11]]
-        # self.y = self.x
+        self.x = [[0, 1, 2, 3, 4, 5, 6, 7],
+                  [1, 1, 7, 1, 6, 1, 4, 1],
+                  [2, 6, 7, 2, 3, 3, 2, 1],
+                  [3, 8, 6, 9, 9, 1, 2, 5],
+                  [4, 1, 1, 8, 1, 1, 3, 4]]
+        self.y = [[3, 1, 4, 1, 5, 9, 2, 6],
+                  [2, 7, 1, 8, 2, 8, 1, 8],
+                  [1, 4, 1, 4, 2, 1, 3, 5],
+                  [1, 7, 3, 2, 1, 1, 1, 1],
+                  [2, 2, 3, 6, 1, 1, 1, 4]]
 
 
 def main():
@@ -104,7 +87,7 @@ def main():
                 break
 
         for model in [m1]:
-            pred, ss = sess.run([model.pred, model.states])
+            pred = sess.run([model.pred])
             print(np.reshape(pred, [BATCH_SIZE, SEQ_SIZE]))
             # print(ss)
 
