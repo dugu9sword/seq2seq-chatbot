@@ -3,6 +3,8 @@
 
 ptb/
 
+n2nds/summary/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

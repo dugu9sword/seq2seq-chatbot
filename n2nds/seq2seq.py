@@ -1,5 +1,5 @@
 import tensorflow as tf
-
+from n2nds import reader
 
 class Config:
     SEQ_SIZE = 5
@@ -27,9 +27,9 @@ class Model:
     def __init__(self, config, data):
         embedding = tf.get_variable("embedding", [config.VOCAB_SIZE, config.EMBED_SIZE], dtype=tf.float32)
         utter_embs = tf.nn.embedding_lookup(embedding, data.utterances)
-        utter_indices = tf.Variable(data.utterances)
-        utter_length = tf.Variable(data.length)
-        utter_weights = tf.Variable(data.weights)
+        utter_indices = tf.Variable(data.utterances, name="utter_indices")
+        utter_length = tf.Variable(data.length, name="utter_length")
+        utter_weights = tf.Variable(data.weights, name="utter_weights")
         encoder = tf.contrib.rnn.BasicLSTMCell(config.UNIT_SIZE, reuse=tf.get_variable_scope().reuse)
         decoder = tf.contrib.rnn.BasicLSTMCell(config.UNIT_SIZE, reuse=tf.get_variable_scope().reuse)
 
@@ -37,7 +37,7 @@ class Model:
         with tf.variable_scope("encoder"):
             enc_outputs, _ = tf.nn.dynamic_rnn(encoder, utter_embs[:, 0, :, :], utter_length[:, 0],
                                                initial_state=encoder.zero_state(config.BATCH_SIZE, tf.float32))
-            utter_lens = tf.Variable(utter_length[:, 0])
+            utter_lens = utter_length[:, 0]
             mask = tf.logical_and(tf.sequence_mask(utter_lens, config.SEQ_SIZE),
                                   tf.logical_not(tf.sequence_mask(utter_lens - 1, config.SEQ_SIZE)))
             enc_output = tf.boolean_mask(enc_outputs, mask)
@@ -63,8 +63,7 @@ class Model:
         softmax_b = tf.get_variable("softmax_b", [config.VOCAB_SIZE], dtype=tf.float32)
         logits = tf.matmul(outputs, softmax_w) + softmax_b
         self.pred = tf.argmax(logits, 1)
-        _, targets = tf.split(data.utterances, [1], axis=1)
-        targets = tf.reshape(targets, [-1])
+        targets = tf.reshape(utter_indices[:, 1], [-1])
         loss = tf.contrib.legacy_seq2seq.sequence_loss_by_example(
             [logits],
             [targets],
@@ -78,9 +77,20 @@ class Model:
 
 
 def main():
+    data = Data()
+    config = Config()
+    weibo = reader.WeiboReader("../dataset/stc_weibo_train_post_generated_100",
+                               "../dataset/stc_weibo_train_response_generated_100")
+    data.utterances=weibo.utterances
+    data.length=weibo.lengths
+    data.weights=weibo.weights
+    config.BATCH_SIZE = len(weibo.utterances)
+    config.SEQ_SIZE=len(weibo.utterances[0][0])
+    config.VOCAB_SIZE=len(weibo.vocabulary)
+
     with tf.name_scope("Train"):
         with tf.variable_scope("Model", initializer=tf.random_uniform_initializer(-0.01, 0.01)) as scope:
-            model = Model(Config(), Data())
+            model = Model(config, data)
 
     with tf.Session() as sess:
         _ = sess.run(tf.global_variables_initializer())
