@@ -1,43 +1,25 @@
 import tensorflow as tf
-from n2nds import reader
 
-class Config:
-    SEQ_SIZE = 5
-    BATCH_SIZE = 2
-    EMBED_SIZE = UNIT_SIZE = 20
-    VOCAB_SIZE = 10
-
-
-class Data:
-    def __init__(self):
-        # Should be [batch_size * 2 * sequence_size]
-        self.utterances = [[[2, 3, 4, 5, 0],
-                            [4, 5, 0, 0, 0]],
-                           [[1, 2, 3, 0, 0],
-                            [3, 4, 5, 0, 0]]]
-        # Should be [batch_size * 2]
-        self.length = [[5, 4],
-                       [3, 4]]
-        # Should be [batch_size * sequence_size]
-        self.weights = [[1, 1, 1, 0, 0],
-                        [1, 1, 1, 1, 0]]
+from n2nds.config import Config
+from n2nds.data import Data
+from n2nds.reader import WeiboReader
 
 
 class Model:
-    def __init__(self, config, data):
+    def __init__(self, config, data, is_train=True):
         embedding = tf.get_variable("embedding", [config.VOCAB_SIZE, config.EMBED_SIZE], dtype=tf.float32)
-        utter_embs = tf.nn.embedding_lookup(embedding, data.utterances)
-        utter_indices = tf.Variable(data.utterances, name="utter_indices")
-        utter_length = tf.Variable(data.length, name="utter_length")
+        utter_indices = tf.Variable(data.indices, name="utter_indices")
+        utter_lengths = tf.Variable(data.lengths, name="utter_lengths")
         utter_weights = tf.Variable(data.weights, name="utter_weights")
+        utter_embs = tf.nn.embedding_lookup(embedding, utter_indices)
         encoder = tf.contrib.rnn.BasicLSTMCell(config.UNIT_SIZE, reuse=tf.get_variable_scope().reuse)
         decoder = tf.contrib.rnn.BasicLSTMCell(config.UNIT_SIZE, reuse=tf.get_variable_scope().reuse)
 
-        # enc_state = encoder.zero_state(config.BATCH_SIZE, tf.float32)
+        self.initial_enc_state = enc_state = encoder.zero_state(config.BATCH_SIZE, tf.float32)
         with tf.variable_scope("encoder"):
-            enc_outputs, _ = tf.nn.dynamic_rnn(encoder, utter_embs[:, 0, :, :], utter_length[:, 0],
-                                               initial_state=encoder.zero_state(config.BATCH_SIZE, tf.float32))
-            utter_lens = utter_length[:, 0]
+            enc_outputs, _ = tf.nn.dynamic_rnn(encoder, utter_embs[:, 0, :, :], utter_lengths[:, 0],
+                                               initial_state=enc_state)
+            utter_lens = utter_lengths[:, 0]
             mask = tf.logical_and(tf.sequence_mask(utter_lens, config.SEQ_SIZE),
                                   tf.logical_not(tf.sequence_mask(utter_lens - 1, config.SEQ_SIZE)))
             enc_output = tf.boolean_mask(enc_outputs, mask)
@@ -48,19 +30,29 @@ class Model:
 
         dec_state = decoder.zero_state(config.BATCH_SIZE, tf.float32)
         dec_outputs = []
+        softmax_w = tf.get_variable("softmax_w", [config.EMBED_SIZE, config.VOCAB_SIZE], dtype=tf.float32)
+        softmax_b = tf.get_variable("softmax_b", [config.VOCAB_SIZE], dtype=tf.float32)
+
+        dec_indices = tf.get_variable(shape=[config.BATCH_SIZE, 1], dtype=tf.float32, name="dec_indices")
+        dec_input = enc_output
         with tf.variable_scope("decoder"):
-            for time_step in range(config.SEQ_SIZE):
-                if time_step == 0:
-                    dec_output, dec_state = decoder(enc_output, dec_state)
-                else:
-                    tf.get_variable_scope().reuse_variables()
-                    dec_output, dec_state = decoder(utter_embs[:, 1, time_step, :], dec_state)
-                dec_outputs.append(dec_output)  # outputs: BATCH * SEQ_SIZE * EMB_SIZE
+            if is_train:
+                for time_step in range(config.SEQ_SIZE):
+                    if time_step == 0:
+                        dec_output, dec_state = decoder(enc_output, dec_state)
+                    else:
+                        tf.get_variable_scope().reuse_variables()
+                        dec_output, dec_state = decoder(utter_embs[:, 1, time_step, :], dec_state)
+                    dec_outputs.append(dec_output)  # outputs: BATCH * SEQ_SIZE * EMB_SIZE
+            else:
+                dec_output, dec_state = decoder(dec_input, dec_state)
+                self.dec_output_index = tf.argmax(tf.matmul(dec_output, softmax_w) + softmax_b, 1)
+
+        if not is_train:
+            return
 
         outputs = tf.reshape(dec_outputs, [-1, config.EMBED_SIZE])
 
-        softmax_w = tf.get_variable("softmax_w", [config.EMBED_SIZE, config.VOCAB_SIZE], dtype=tf.float32)
-        softmax_b = tf.get_variable("softmax_b", [config.VOCAB_SIZE], dtype=tf.float32)
         logits = tf.matmul(outputs, softmax_w) + softmax_b
         self.pred = tf.argmax(logits, 1)
         targets = tf.reshape(utter_indices[:, 1], [-1])
@@ -79,30 +71,53 @@ class Model:
 def main():
     data = Data()
     config = Config()
-    weibo = reader.WeiboReader("../dataset/stc_weibo_train_post_generated_100",
-                               "../dataset/stc_weibo_train_response_generated_100")
-    data.utterances=weibo.utterances
-    data.length=weibo.lengths
-    data.weights=weibo.weights
-    config.BATCH_SIZE = len(weibo.utterances)
-    config.SEQ_SIZE=len(weibo.utterances[0][0])
-    config.VOCAB_SIZE=len(weibo.vocabulary)
+    weibo = WeiboReader("../dataset/stc_weibo_train_post_generated_10",
+                        "../dataset/stc_weibo_train_response_generated_10")
+    data, config = weibo.gen_data_and_config_from_dataset()
 
     with tf.name_scope("Train"):
         with tf.variable_scope("Model", initializer=tf.random_uniform_initializer(-0.01, 0.01)) as scope:
-            model = Model(config, data)
+            train_model = Model(config, data, is_train=True)
+
+    with tf.name_scope("Valid"):
+        with tf.variable_scope("Model", reuse=True):
+            valid_model = Model(config, data, is_train=False)
 
     with tf.Session() as sess:
-        _ = sess.run(tf.global_variables_initializer())
+        sess.run(tf.global_variables_initializer())
         sum_writer = tf.summary.FileWriter('summary/sum', sess.graph)
+        iter = 0
         while True:
-            _, cost, merged = sess.run([model.minimizier, model.cost, model.merged])
-            sum_writer.add_summary(merged)
-            print(cost)
-            if cost < 0.1:
+            iter += 1
+            sess.run(train_model.minimizier)
+            if iter % 50 == 0:
+                cost, merged = sess.run([train_model.cost, train_model.merged])
+                sum_writer.add_summary(merged, global_step=iter / 50)
+                print("epoch %d : cost %f" % (iter // 50, cost))
+                if cost < 1:
+                    break
+
+        print("Predict model")
+        pred = sess.run([train_model.pred])
+        pred = pred[0].tolist()
+        i = 0
+        while True:
+            print(weibo.gen_words_from_indices(pred[i:i + config.SEQ_SIZE]))
+            i += config.SEQ_SIZE
+            if i >= len(pred):
                 break
-        pred = sess.run([model.pred])
-        print(pred)
+
+        print("Valid model")
+
+        pred = sess.run([valid_model.dec_output_index])
+        pred = pred[0].tolist()
+        print(weibo.gen_words_from_indices(pred))
+        # i = 0
+        # while True:
+        #     print(weibo.gen_words_from_indices(pred[i:i + config.SEQ_SIZE]))
+        #     i += config.SEQ_SIZE
+        #     if i >= len(pred):
+        #         break
 
 
 if __name__ == '__main__':
