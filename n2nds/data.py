@@ -11,3 +11,4 @@ class Data:
         # Should be [batch_size * sequence_size]
         self.weights = [[1, 1, 1, 1, 1],
                         [1, 1, 1, 1, 1]]
+

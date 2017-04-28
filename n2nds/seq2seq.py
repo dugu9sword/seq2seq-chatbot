@@ -2,12 +2,14 @@ import tensorflow as tf
 
 
 class Model:
-    def __init__(self, config, data, is_train=True):
+    def __init__(self, config, is_train=True):
         embedding = tf.get_variable("embedding", [config.VOCAB_SIZE, config.EMBED_SIZE], dtype=tf.float32)
-        utter_indices = tf.Variable(data.indices, name="utter_indices")
-        utter_lengths = tf.Variable(data.lengths, name="utter_lengths")
-        utter_weights = tf.Variable(data.weights, name="utter_weights")
-        utter_embs = tf.nn.embedding_lookup(embedding, utter_indices)
+        self.utter_indices = tf.placeholder(shape=[config.BATCH_SIZE, 2, config.SEQ_SIZE], name="utter_indices",
+                                            dtype=tf.int32)
+        self.utter_lengths = tf.placeholder(shape=[config.BATCH_SIZE, 2], name="utter_lengths", dtype=tf.int32)
+        self.utter_weights = tf.placeholder(shape=[config.BATCH_SIZE, config.SEQ_SIZE], name="utter_weights",
+                                            dtype=tf.int32)
+        utter_embs = tf.nn.embedding_lookup(embedding, self.utter_indices)
         encoder = tf.contrib.rnn.BasicLSTMCell(config.UNIT_SIZE, state_is_tuple=True,
                                                reuse=tf.get_variable_scope().reuse)
         decoder = tf.contrib.rnn.BasicLSTMCell(config.UNIT_SIZE, state_is_tuple=True,
@@ -16,9 +18,9 @@ class Model:
         self.initial_enc_state = encoder.zero_state(config.BATCH_SIZE, tf.float32)
         enc_state = self.initial_enc_state
         with tf.variable_scope("encoder"):
-            enc_outputs, _ = tf.nn.dynamic_rnn(encoder, utter_embs[:, 0, :, :], utter_lengths[:, 0],
+            enc_outputs, _ = tf.nn.dynamic_rnn(encoder, utter_embs[:, 0, :, :], self.utter_lengths[:, 0],
                                                initial_state=enc_state)
-            utter_lens = utter_lengths[:, 0]
+            utter_lens = self.utter_lengths[:, 0]
             mask = tf.logical_and(tf.sequence_mask(utter_lens, config.SEQ_SIZE),
                                   tf.logical_not(tf.sequence_mask(utter_lens - 1, config.SEQ_SIZE)))
             enc_output = tf.boolean_mask(enc_outputs, mask)
@@ -52,12 +54,12 @@ class Model:
         logits = tf.matmul(outputs, softmax_w) + softmax_b
         self.pred = tf.argmax(logits, 1)
         self.fuck_logits = logits
-        targets = tf.reshape(utter_indices[:, 1], [-1])
+        targets = tf.reshape(self.utter_indices[:, 1], [-1])
         # targets = tf.reshape(utter_indices[:, 1],[config.BATCH_SIZE, config.SEQ_SIZE])
         loss = tf.contrib.legacy_seq2seq.sequence_loss_by_example(
             [logits],
             [targets],
-            [tf.to_float(tf.reshape(utter_weights, [config.BATCH_SIZE * config.SEQ_SIZE]))])
+            [tf.to_float(tf.reshape(self.utter_weights, [config.BATCH_SIZE * config.SEQ_SIZE]))])
         self.cost = tf.reduce_sum(loss) / config.BATCH_SIZE
         opt = tf.train.AdamOptimizer()
         self.minimizier = opt.minimize(loss)

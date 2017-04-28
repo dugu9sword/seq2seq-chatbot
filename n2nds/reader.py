@@ -1,57 +1,79 @@
 from n2nds.config import Config
 from n2nds.data import Data
-import numpy as np
-
 
 
 class SpToken:
-    EOS = "<---end--->"
-    BOS = "<---begin--->"
+    EOS = "<end>"
+    BOS = "<begin>"
     NIL = "<no word>"
     UNK = "<unknown word>"
 
 
 class WeiboReader:
-    def add_to_vocab(self, word):
+    def _add_to_vocab(self, word):
         self.vocabulary.setdefault(word, len(self.vocabulary))
 
-    def __init__(self, post_path, response_path):
-        self.f_post = open(post_path)
-        self.f_response = open(response_path)
+    def __init__(self, post_path, response_path, batch_size=-1):
 
+        # Load the file
+        f_post = open(post_path)
+        f_response = open(response_path)
+        self._posts = []
+        self._responses = []
+        for post in f_post.readlines():
+            self._posts.append(post.strip('\n'))
+        for response in f_response.readlines():
+            self._responses.append(response.strip('\n'))
+
+        # Generate the dictionary
         self.vocabulary = {}
-        self.add_to_vocab(SpToken.BOS)
-        self.add_to_vocab(SpToken.EOS)
-        self.add_to_vocab(SpToken.NIL)
-        self.add_to_vocab(SpToken.UNK)
+        self._add_to_vocab(SpToken.BOS)
+        self._add_to_vocab(SpToken.EOS)
+        self._add_to_vocab(SpToken.NIL)
+        self._add_to_vocab(SpToken.UNK)
+        for utters in [self._posts, self._responses]:
+            for utter in utters:
+                for ch in utter:
+                    self._add_to_vocab(ch)
 
-        posts = []
-        responses = []
-        for post in self.f_post.readlines():
-            posts.append(post.strip('\n'))
-        for response in self.f_response.readlines():
-            responses.append(response.strip('\n'))
-        self.dataset_pairs = zip(posts, responses)
+        # Generate the data set
+        self._indices, self._lengths, self._weights = \
+            self._gen_length_and_weights(zip(self._posts, self._responses))
 
-    def gen_data_and_config_from_dataset(self):
-        return self.gen_data_and_config_from_p_r_pairs(self.dataset_pairs)
+        # Generate the config
+        self.config = Config()
+        self.config.BATCH_SIZE = len(self._indices) if batch_size == -1 else batch_size
+        self.config.SEQ_SIZE = len(self._indices[0][0])
+        self.config.VOCAB_SIZE = len(self.vocabulary)
+        self.config.EMBED_SIZE = 20
+        self.config.UNIT_SIZE = 20
 
-    def gen_data_and_config_from_p_r_pairs(self, p_r_pairs):
+        # Some variable for batch generation
+        self._batch_pointer = 0
+        self.dataset_size = len(self._indices)
+        self._batch_size = batch_size
+
+        if self.dataset_size % self._batch_size:
+            print("data set size is %d, batch size is %d, batch size must be divided by total size" % (
+                self.dataset_size, self._batch_size))
+            exit(0)
+
+    def next_batch(self):
+        next_batch_pointer = min(self._batch_pointer + self._batch_size, self.dataset_size)
         data = Data()
-        data.indices, data.lengths, data.weights = self.gen_length_and_weights(p_r_pairs, True)
-        config = Config()
-        config.BATCH_SIZE = len(data.indices)
-        config.SEQ_SIZE = len(data.indices[0][0])
-        config.VOCAB_SIZE = len(self.vocabulary)
-        return data, config
+        data.indices = self._indices[self._batch_pointer:next_batch_pointer]
+        data.lengths = self._lengths[self._batch_pointer:next_batch_pointer]
+        data.weights = self._weights[self._batch_pointer:next_batch_pointer]
+        self._batch_pointer = 0 if next_batch_pointer == self.dataset_size else next_batch_pointer
+        return data
 
-    def gen_length_and_weights(self, post_response_pairs, is_first_time=False):
+    def _gen_length_and_weights(self, post_response_pairs):
         post_lengths = []
         response_lengths = []
         post_indices = []
         response_indices = []
 
-        MAX_LENGTH = 0
+        max_length = 0
 
         # Generate indices from words
         for post, response in post_response_pairs:
@@ -60,8 +82,6 @@ class WeiboReader:
 
             for utter_index, utter in zip([post_index, response_index], [post, response]):
                 for ch in utter:
-                    if is_first_time:
-                        self.add_to_vocab(ch)
                     if ch in self.vocabulary:
                         utter_index.append(self.vocabulary[ch])
                     else:
@@ -71,7 +91,7 @@ class WeiboReader:
             post_lengths.append(len(post) + 1)
             response_lengths.append(len(response) + 1)
 
-            MAX_LENGTH = max(len(post)+ 1, len(response)+ 1, MAX_LENGTH)
+            max_length = max(len(post) + 1, len(response) + 1, max_length)
 
             post_indices.append(post_index)
             response_indices.append(response_index)
@@ -79,9 +99,9 @@ class WeiboReader:
         # Append NIL to the rest of indices
         nil_index = self.vocabulary[SpToken.NIL]
         for post_index in post_indices:
-            post_index.extend([nil_index] * (MAX_LENGTH - len(post_index)))
+            post_index.extend([nil_index] * (max_length - len(post_index)))
         for response_index in response_indices:
-            response_index.extend([nil_index] * (MAX_LENGTH - len(response_index)))
+            response_index.extend([nil_index] * (max_length - len(response_index)))
 
         # Generate lengths
         lengths = list(map(list, zip(post_lengths, response_lengths)))
@@ -92,7 +112,7 @@ class WeiboReader:
         # Generate weights for response
         weights = []
         for response_length in response_lengths:
-            weights.append([1] * response_length + [0] * (MAX_LENGTH - response_length))
+            weights.append([1] * response_length + [0] * (max_length - response_length))
 
         return utter_indices, lengths, weights
 
@@ -102,13 +122,18 @@ class WeiboReader:
 
 
 def main():
-    reader = WeiboReader("../dataset/stc_weibo_train_post_generated_100",
-                         "../dataset/stc_weibo_train_response_generated_100")
-    data, config=reader.gen_data_and_config_from_dataset()
-    # print(np.array(data.indices).shape)
-    # print(reader.vocabulary)
-    # print(reader.post_indices)
-    # print(reader.lengths)
+    reader = WeiboReader("../dataset/stc_weibo_train_post_generated_10",
+                         "../dataset/stc_weibo_train_response_generated_10")
+    reader.set_batch_size(3)
+
+    for _ in range(4):
+        print("~~~")
+        data = reader.next_batch()
+        print(data.indices)
+        print(data.lengths)
+        print(data.weights)
+        print(reader.config)
+        # print(reader.vocabulary)
 
 
 if __name__ == '__main__':
