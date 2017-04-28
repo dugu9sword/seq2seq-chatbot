@@ -3,7 +3,7 @@
 
 ptb/
 
-n2nds/summary/
+/summary/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

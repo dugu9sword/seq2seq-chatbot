@@ -5,10 +5,10 @@ import numpy as np
 
 
 class SpToken:
-    EOS = "|------|end of a sentence"
-    BOS = "begining of a sentence"
-    NIL = "no word"
-    UNK = "unknown word"
+    EOS = "<---end--->"
+    BOS = "<---begin--->"
+    NIL = "<no word>"
+    UNK = "<unknown word>"
 
 
 class WeiboReader:
