@@ -33,30 +33,21 @@ class Model:
         softmax_w = tf.get_variable("softmax_w", [config.EMBED_SIZE, config.VOCAB_SIZE], dtype=tf.float32)
         softmax_b = tf.get_variable("softmax_b", [config.VOCAB_SIZE], dtype=tf.float32)
 
-        self.fuck_inputs = []
-        self.fuck_outputs = []
-        self.fuck_previous_embeddings = []
-
         with tf.variable_scope("decoder"):
             for time_step in range(config.SEQ_SIZE):
                 if time_step == 0:
                     dec_output, dec_state = decoder(enc_output, dec_state)
-                    self.fuck_previous_embeddings.append(enc_output)
                 else:
                     tf.get_variable_scope().reuse_variables()
                     if is_train:
                         dec_output, dec_state = decoder(utter_embs[:, 1, time_step - 1, :], dec_state)
                     else:
                         dec_output_index = tf.argmax(tf.matmul(dec_output, softmax_w) + softmax_b, axis=1)
-                        self.fuck_inputs.append(dec_output_index)
                         previous_embedding = tf.nn.embedding_lookup(embedding, dec_output_index)
                         dec_output, dec_state = decoder(previous_embedding, dec_state)
-                        self.fuck_previous_embeddings.append(previous_embedding)
                 dec_outputs.append(dec_output)  # outputs: SEQ_SIZE * BATCH * EMB_SIZE
-                self.fuck_outputs.append(dec_output)
 
         outputs = tf.reshape(tf.concat(dec_outputs, axis=1), [-1, config.EMBED_SIZE])
-        # self.fuck_inputs=tf.reshape(self.fuck_inputs,[-1])
 
         logits = tf.matmul(outputs, softmax_w) + softmax_b
         self.pred = tf.argmax(logits, 1)
