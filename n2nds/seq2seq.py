@@ -62,7 +62,8 @@ class Model:
             [tf.to_float(tf.reshape(self.utter_weights, [config.BATCH_SIZE * config.SEQ_SIZE]))])
         self.cost = tf.reduce_sum(loss) / config.BATCH_SIZE
         opt = tf.train.AdamOptimizer()
-        self.minimizier = opt.minimize(loss)
+        self.grad_and_vars = opt.compute_gradients(loss)
+        self.train_op = opt.apply_gradients(self.grad_and_vars)
 
         tf.summary.scalar('loss', self.cost)
         self.merged = tf.summary.merge_all()

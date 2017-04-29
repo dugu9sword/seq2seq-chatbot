@@ -5,6 +5,9 @@ ptb/
 
 /tmp/
 
+dataset/stc_weibo_train_post_generated_1000000
+dataset/stc_weibo_train_response_generated_1000000
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

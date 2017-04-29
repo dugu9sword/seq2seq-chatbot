@@ -7,8 +7,8 @@ from n2nds.seq2seq import Model
 
 
 def main():
-    data_set_used = 100000
-    batch_size = 100
+    data_set_used = 100
+    batch_size = 10
     post_path = "dataset/stc_weibo_train_post_generated_%d" % data_set_used
     response_path = "dataset/stc_weibo_train_response_generated_%d" % data_set_used
 
@@ -44,24 +44,24 @@ def main():
     with sv.managed_session() as sess:
         # sum_writer = tf.summary.FileWriter('summary/sum', sess.graph)
 
-        # iter = 0
-        # while True:
-        #     iter += 1
-        #
-        #     data = train_weibo.next_batch()
-        #     feed_dict = {}
-        #     feed_dict[train_model.utter_indices] = data.indices
-        #     feed_dict[train_model.utter_lengths] = data.lengths
-        #     feed_dict[train_model.utter_weights] = data.weights
-        #
-        #     sess.run(train_model.minimizier, feed_dict)
-        #     if iter % 50 == 0:
-        #         cost, merged = sess.run([train_model.cost, train_model.merged], feed_dict)
-        #         sv.summary_computed(sess, summary=merged, global_step=iter)
-        #         # sum_writer.add_summary(merged, global_step=iter / 50)
-        #         print("iter %d : cost %f" % (iter // 50, cost))
-        #         if cost < 0.1:
-        #             break
+        iter = 0
+        while True:
+            iter += 1
+
+            data = train_weibo.next_batch()
+            feed_dict = {}
+            feed_dict[train_model.utter_indices] = data.indices
+            feed_dict[train_model.utter_lengths] = data.lengths
+            feed_dict[train_model.utter_weights] = data.weights
+
+            sess.run(train_model.train_op, feed_dict)
+            if iter % 50 == 0:
+                cost, merged = sess.run([train_model.cost, train_model.merged], feed_dict)
+                sv.summary_computed(sess, summary=merged, global_step=iter)
+                # sum_writer.add_summary(merged, global_step=iter / 50)
+                print("iter %d : cost %f" % (iter // 50, cost))
+                if cost < 0.001:
+                    break
 
         train_output = open(train_output_path, "w")
         valid_output = open(valid_output_path, "w")

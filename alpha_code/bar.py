@@ -32,7 +32,7 @@ class Model:
 
         outputs, state=tf.contrib.legacy_seq2seq.basic_rnn_seq2seq(encoder_inputs, decoder_inputs, lstm, dtype=tf.float32)
         outputs = tf.concat(outputs,axis=1)
-        outputs = tf.reshape(outputs,[-1,SIZE])
+        outputs = tf.reshape(tf.concat(axis=1, values=outputs),[-1,SIZE])
 
         softmax_w = tf.get_variable("softmax_w", [SIZE, VOCAB_SIZE],
                                     dtype=tf.float32, initializer=uni_initer)
