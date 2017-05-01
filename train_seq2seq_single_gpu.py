@@ -10,7 +10,7 @@ def main():
     data_set_used = 100
     batch_size = 100
     num_of_layer = 2
-    info = "realstate"
+    info = "normal"
     post_path = "dataset/stc_weibo_train_post_generated_%d" % data_set_used
     response_path = "dataset/stc_weibo_train_response_generated_%d" % data_set_used
 

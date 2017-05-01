@@ -90,7 +90,7 @@ def main():
                 sv.summary_computed(sess, summary=merged[0], global_step=iter)
                 # sum_writer.add_summary(merged, global_step=iter / 50)
                 print("iter %d : cost %s" % (iter // 50, cost))
-                if cost[0] < 65:
+                if cost[0] < 1:
                     break
 
         models = tf.get_collection("train_model")

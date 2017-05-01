@@ -26,17 +26,17 @@ class Model:
         with tf.variable_scope("encoder"):
             enc_outputs, enc_states = tf.nn.dynamic_rnn(encoder, utter_embs[:, 0, :, :], self.utter_lengths[:, 0],
                                                initial_state=enc_state)
-            utter_lens = self.utter_lengths[:, 0]
-            mask = tf.logical_and(tf.sequence_mask(utter_lens, config.SEQ_SIZE),
-                                  tf.logical_not(tf.sequence_mask(utter_lens - 1, config.SEQ_SIZE)))
-            enc_output = tf.boolean_mask(enc_outputs, mask)
+            # utter_lens = self.utter_lengths[:, 0]
+            # mask = tf.logical_and(tf.sequence_mask(utter_lens, config.SEQ_SIZE),
+            #                       tf.logical_not(tf.sequence_mask(utter_lens - 1, config.SEQ_SIZE)))
+            # enc_output = tf.boolean_mask(enc_outputs, mask)
             # enc_state = tf.boolean_mask(enc_states, mask)
             # for time_step in range(config.SEQ_SIZE):
             #     if time_step > 0:
             #         tf.get_variable_scope().reuse_variables()
             #     enc_output, enc_state = encoder(utter_embs[:, 0, time_step, :], enc_state)
 
-        self.initial_dec_state = decoder.zero_state(config.BATCH_SIZE, tf.float32)
+        # self.initial_dec_state = decoder.zero_state(config.BATCH_SIZE, tf.float32)
         # dec_state = self.initial_dec_state
         dec_state = enc_states
         dec_first_input = tf.zeros([config.BATCH_SIZE, config.EMBED_SIZE])
