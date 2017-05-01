@@ -7,9 +7,10 @@ from n2nds.seq2seq import Model
 
 
 def main():
-    data_set_used = 10
-    batch_size = 10
+    data_set_used = 100
+    batch_size = 100
     num_of_layer = 2
+    info = "realstate"
     post_path = "dataset/stc_weibo_train_post_generated_%d" % data_set_used
     response_path = "dataset/stc_weibo_train_response_generated_%d" % data_set_used
 
@@ -23,7 +24,7 @@ def main():
     # Set the log path for storing model and summary
     if not os.path.exists("tmp"):
         os.mkdir("tmp")
-    model_id = "a_%d_b_%d" % (data_set_used, batch_size)
+    model_id = "a_%d_b_%d_l_%d_i_%s" % (data_set_used, batch_size, num_of_layer, info)
     if not os.path.exists("tmp/output_%s" % model_id):
         os.mkdir("tmp/output_%s" % model_id)
     log_dir_path = "tmp/logdir_%s" % model_id
@@ -65,7 +66,7 @@ def main():
                 sv.summary_computed(sess, summary=merged, global_step=iter)
                 # sum_writer.add_summary(merged, global_step=iter / 50)
                 print("iter %d : cost %f" % (iter // 50, cost))
-                if cost < 3:
+                if cost < 1:
                     break
 
         train_output = open(train_output_path, "w")

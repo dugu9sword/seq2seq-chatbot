@@ -1,6 +1,5 @@
 import tensorflow as tf
 
-
 class Model:
     def __init__(self, config, is_train=True, embedding_init_value=None, num_of_layer=1):
         if embedding_init_value is None:
@@ -25,19 +24,22 @@ class Model:
         self.initial_enc_state = encoder.zero_state(config.BATCH_SIZE, tf.float32)
         enc_state = self.initial_enc_state
         with tf.variable_scope("encoder"):
-            enc_outputs, _ = tf.nn.dynamic_rnn(encoder, utter_embs[:, 0, :, :], self.utter_lengths[:, 0],
+            enc_outputs, enc_states = tf.nn.dynamic_rnn(encoder, utter_embs[:, 0, :, :], self.utter_lengths[:, 0],
                                                initial_state=enc_state)
             utter_lens = self.utter_lengths[:, 0]
             mask = tf.logical_and(tf.sequence_mask(utter_lens, config.SEQ_SIZE),
                                   tf.logical_not(tf.sequence_mask(utter_lens - 1, config.SEQ_SIZE)))
             enc_output = tf.boolean_mask(enc_outputs, mask)
+            # enc_state = tf.boolean_mask(enc_states, mask)
             # for time_step in range(config.SEQ_SIZE):
             #     if time_step > 0:
             #         tf.get_variable_scope().reuse_variables()
             #     enc_output, enc_state = encoder(utter_embs[:, 0, time_step, :], enc_state)
 
         self.initial_dec_state = decoder.zero_state(config.BATCH_SIZE, tf.float32)
-        dec_state = self.initial_dec_state
+        # dec_state = self.initial_dec_state
+        dec_state = enc_states
+        dec_first_input = tf.zeros([config.BATCH_SIZE, config.EMBED_SIZE])
         dec_outputs = []
         softmax_w = tf.get_variable("softmax_w", [config.EMBED_SIZE, config.VOCAB_SIZE], dtype=tf.float32)
         softmax_b = tf.get_variable("softmax_b", [config.VOCAB_SIZE], dtype=tf.float32)
@@ -45,7 +47,7 @@ class Model:
         with tf.variable_scope("decoder"):
             for time_step in range(config.SEQ_SIZE):
                 if time_step == 0:
-                    dec_output, dec_state = decoder(enc_output, dec_state)
+                    dec_output, dec_state = decoder(dec_first_input, dec_state)
                 else:
                     tf.get_variable_scope().reuse_variables()
                     if is_train:

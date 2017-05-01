@@ -9,6 +9,7 @@ data_set_used = 1000000
 batch_size = 500
 gpu_nums = 4
 layer_nums = 4
+info = "normal"
 post_path = "dataset/stc_weibo_train_post_generated_%d" % data_set_used
 response_path = "dataset/stc_weibo_train_response_generated_%d" % data_set_used
 
@@ -43,7 +44,7 @@ def main():
     # Set the log path for storing model and summary
     if not os.path.exists("tmp"):
         os.mkdir("tmp")
-    model_id = "a_%d_b_%d_l_%d_g_%d" % (data_set_used, batch_size, layer_nums, gpu_nums)
+    model_id = "a_%d_b_%d_l_%d_g_%d_i_%s" % (data_set_used, batch_size, layer_nums, gpu_nums, info)
     if not os.path.exists("tmp/output_%s" % model_id):
         os.mkdir("tmp/output_%s" % model_id)
     log_dir_path = "tmp/logdir_%s" % model_id
