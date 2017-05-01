@@ -2,18 +2,25 @@ import tensorflow as tf
 
 
 class Model:
-    def __init__(self, config, is_train=True):
-        embedding = tf.get_variable("embedding", [config.VOCAB_SIZE, config.EMBED_SIZE], dtype=tf.float32)
+    def __init__(self, config, is_train=True, embedding_init_value=None, num_of_layer=1):
+        if embedding_init_value is None:
+            embedding = tf.get_variable("embedding", [config.VOCAB_SIZE, config.EMBED_SIZE], dtype=tf.float32)
+        else:
+            embedding = tf.get_variable("embedding", [config.VOCAB_SIZE, config.EMBED_SIZE], dtype=tf.float32,
+                                        initializer=tf.constant_initializer(embedding_init_value))
+
         self.utter_indices = tf.placeholder(shape=[config.BATCH_SIZE, 2, config.SEQ_SIZE], name="utter_indices",
                                             dtype=tf.int32)
         self.utter_lengths = tf.placeholder(shape=[config.BATCH_SIZE, 2], name="utter_lengths", dtype=tf.int32)
         self.utter_weights = tf.placeholder(shape=[config.BATCH_SIZE, config.SEQ_SIZE], name="utter_weights",
                                             dtype=tf.int32)
         utter_embs = tf.nn.embedding_lookup(embedding, self.utter_indices)
-        encoder = tf.contrib.rnn.BasicLSTMCell(config.UNIT_SIZE, state_is_tuple=True,
-                                               reuse=tf.get_variable_scope().reuse)
-        decoder = tf.contrib.rnn.BasicLSTMCell(config.UNIT_SIZE, state_is_tuple=True,
-                                               reuse=tf.get_variable_scope().reuse)
+        encoder = tf.contrib.rnn.MultiRNNCell(
+            [tf.contrib.rnn.BasicLSTMCell(config.UNIT_SIZE, state_is_tuple=True, reuse=tf.get_variable_scope().reuse)
+             for _ in range(num_of_layer)], state_is_tuple=True)
+        decoder = tf.contrib.rnn.MultiRNNCell(
+            [tf.contrib.rnn.BasicLSTMCell(config.UNIT_SIZE, state_is_tuple=True, reuse=tf.get_variable_scope().reuse)
+             for _ in range(num_of_layer)], state_is_tuple=True)
 
         self.initial_enc_state = encoder.zero_state(config.BATCH_SIZE, tf.float32)
         enc_state = self.initial_enc_state

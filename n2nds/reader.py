@@ -1,5 +1,6 @@
 from n2nds.config import Config
 from n2nds.data import Data
+import random
 
 
 class SpToken:
@@ -13,7 +14,7 @@ class WeiboReader:
     def _add_to_vocab(self, word):
         self.vocabulary.setdefault(word, len(self.vocabulary))
 
-    def __init__(self, post_path, response_path, batch_size=-1):
+    def __init__(self, post_path, response_path, batch_size=-1, pre_trained_path=None):
 
         # Load the file
         f_post = open(post_path)
@@ -26,15 +27,20 @@ class WeiboReader:
             self._responses.append(response.strip('\n'))
 
         # Generate the dictionary
-        self.vocabulary = {}
-        self._add_to_vocab(SpToken.BOS)
-        self._add_to_vocab(SpToken.EOS)
-        self._add_to_vocab(SpToken.NIL)
-        self._add_to_vocab(SpToken.UNK)
-        for utters in [self._posts, self._responses]:
-            for utter in utters:
-                for ch in utter:
-                    self._add_to_vocab(ch)
+        self.vocabulary = None
+        self.embedding = None
+        if pre_trained_path is None:
+            self.vocabulary = {}
+            self._add_to_vocab(SpToken.BOS)
+            self._add_to_vocab(SpToken.EOS)
+            self._add_to_vocab(SpToken.NIL)
+            self._add_to_vocab(SpToken.UNK)
+            for utters in [self._posts, self._responses]:
+                for utter in utters:
+                    for ch in utter:
+                        self._add_to_vocab(ch)
+        else:
+            self.vocabulary, self.embedding = EmbeddingReader.load(path=pre_trained_path)
 
         # Generate the data set
         self._indices, self._lengths, self._weights = \
@@ -118,22 +124,73 @@ class WeiboReader:
 
     def gen_words_from_indices(self, word_indices):
         rev_vocabulary = {v: k for k, v in self.vocabulary.items()}
-        return "".join(list(map(rev_vocabulary.get, word_indices[0:-1])))
+        return "".join(list(map(rev_vocabulary.get, word_indices)))
+
+
+class EmbeddingReader:
+    @staticmethod
+    def load(path):
+        def _add_to_vocab(char):
+            vocabulary.setdefault(char, len(vocabulary))
+
+        def _add_to_embed(embed):
+            embeddings.append(embed)
+
+        def _generate_random(num):
+            ret = []
+            for i in range(num):
+                ret.append(random.uniform(0, 0.01))
+            return ret
+
+        vocabulary = dict()
+        embeddings = list()
+
+        _add_to_vocab(SpToken.BOS)
+        _add_to_vocab(SpToken.EOS)
+        _add_to_vocab(SpToken.NIL)
+        _add_to_vocab(SpToken.UNK)
+        for i in range(len(vocabulary)):
+            _add_to_embed(_generate_random(200))
+
+        f = open(path)
+
+        i = 0
+        while True:
+            # i += 1
+            # print(i)
+
+            line = f.readline()
+            if line == '':
+                break
+
+            line = line.split(' ')
+            char = line[0]
+            embed = list(map(float, line[1:-1]))
+
+            _add_to_vocab(char)
+            _add_to_embed(embed)
+        print("Embedding loaded successfully.")
+        return vocabulary, embeddings
 
 
 def main():
-    reader = WeiboReader("../dataset/stc_weibo_train_post_generated_10",
-                         "../dataset/stc_weibo_train_response_generated_10")
-    reader.set_batch_size(3)
+    v, e = EmbeddingReader.load("../pre_trained/wiki_char_200.txt")
+    # print(v)
+    # print(e)
+    print(len(v))
 
-    for _ in range(4):
-        print("~~~")
-        data = reader.next_batch()
-        print(data.indices)
-        print(data.lengths)
-        print(data.weights)
-        print(reader.config)
-        # print(reader.vocabulary)
+    # reader = WeiboReader("../dataset/stc_weibo_train_post_generated_10",
+    #                      "../dataset/stc_weibo_train_response_generated_10")
+    # reader.set_batch_size(3)
+    #
+    # for _ in range(4):
+    #     print("~~~")
+    #     data = reader.next_batch()
+    #     print(data.indices)
+    #     print(data.lengths)
+    #     print(data.weights)
+    #     print(reader.config)
+    #     # print(reader.vocabulary)
 
 
 if __name__ == '__main__':

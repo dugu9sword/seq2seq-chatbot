@@ -5,6 +5,8 @@ ptb/
 
 /tmp/
 
+pre_trained/wiki_char_200.txt
+
 dataset/stc_weibo_train_post_generated_1000000
 dataset/stc_weibo_train_response_generated_1000000
 

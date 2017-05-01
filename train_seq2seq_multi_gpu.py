@@ -2,30 +2,32 @@ import os
 
 import tensorflow as tf
 
-from n2nds.reader import WeiboReader
+from n2nds.reader import WeiboReader, SpToken
 from n2nds.seq2seq import Model
 
 data_set_used = 1000000
-batch_size = 1000
+batch_size = 500
 gpu_nums = 4
+layer_nums = 4
 post_path = "dataset/stc_weibo_train_post_generated_%d" % data_set_used
 response_path = "dataset/stc_weibo_train_response_generated_%d" % data_set_used
 
 # Load the data set
 train_weibo = WeiboReader(post_path, response_path, batch_size=batch_size)
-train_weibo.config.EMBED_SIZE = 100
-train_weibo.config.UNIT_SIZE = 100
+train_weibo.config.EMBED_SIZE = 200
+train_weibo.config.UNIT_SIZE = 200
 
 
 def multi_gpu_model(num_gpus=1):
     grads = []
-    reuse_flag=False
+    reuse_flag = False
     for i in range(num_gpus):
         with tf.device('/gpu:%d' % i):
             with tf.name_scope("tower_%d" % i):
                 with tf.variable_scope("Model", reuse=reuse_flag):
-                    model = Model(train_weibo.config, is_train=True)
-                    reuse_flag=True
+                    model = Model(train_weibo.config, is_train=True,
+                                  embedding_init_value=train_weibo.embedding)
+                    reuse_flag = True
                 tf.add_to_collection("train_model", model)
                 tf.add_to_collection("train_cost", model.cost)
                 tf.add_to_collection("train_merged", model.merged)
@@ -41,18 +43,12 @@ def main():
     # Set the log path for storing model and summary
     if not os.path.exists("tmp"):
         os.mkdir("tmp")
-    model_id = "a_%d_b_%d_g_%d" % (data_set_used, batch_size, gpu_nums)
+    model_id = "a_%d_b_%d_l_%d_g_%d" % (data_set_used, batch_size, layer_nums, gpu_nums)
     if not os.path.exists("tmp/output_%s" % model_id):
         os.mkdir("tmp/output_%s" % model_id)
     log_dir_path = "tmp/logdir_%s" % model_id
     train_output_path = "tmp/output_%s/train_output.txt" % model_id
     valid_output_path = "tmp/output_%s/valid_output.txt" % model_id
-
-    # Create the model
-    # with tf.name_scope("Prototype"):
-    #     with tf.variable_scope("Model", reuse=None,
-    #                            initializer=tf.random_uniform_initializer(-0.01, 0.01)):
-    #         prototype_model = Model(train_weibo.config, is_train=True)
 
     # Create the model
     with tf.name_scope("Train"):
@@ -93,29 +89,37 @@ def main():
                 sv.summary_computed(sess, summary=merged[0], global_step=iter)
                 # sum_writer.add_summary(merged, global_step=iter / 50)
                 print("iter %d : cost %s" % (iter // 50, cost))
-                if cost[0] < 1:
+                if cost[0] < 65:
                     break
 
         models = tf.get_collection("train_model")
         train_output = open(train_output_path, "w")
         valid_output = open(valid_output_path, "w")
+        data = train_weibo.next_batch()
         for model, output in list(zip([models[0], valid_model], [train_output, valid_output])):
-            data = train_weibo.next_batch()
             feed_dict = {}
             feed_dict[model.utter_indices] = data.indices
             feed_dict[model.utter_lengths] = data.lengths
             feed_dict[model.utter_weights] = data.weights
+
             pred = sess.run(model.pred, feed_dict)
-            pred = pred.tolist()
-            i = 0
-            while True:
-                pred_res = train_weibo.gen_words_from_indices(pred[i:i + train_weibo.config.SEQ_SIZE])
-                print(pred_res)
-                output.write(pred_res)
-                output.write("\n")
-                i += train_weibo.config.SEQ_SIZE
-                if i >= len(pred):
-                    break
+            chunks = lambda arr, n: [arr[i:i + n] for i in range(0, len(arr), n)]
+            pred = chunks(pred.tolist(), train_weibo.config.SEQ_SIZE)
+
+            for p_r_pair, r in zip(data.indices, pred):
+                def _index_of_or_len(lst, ele):
+                    return lst.index(ele) if ele in lst else len(lst)
+
+                post = p_r_pair[0][0:_index_of_or_len(p_r_pair[0], train_weibo.vocabulary[SpToken.EOS])]
+                response = p_r_pair[1][0:_index_of_or_len(p_r_pair[1], train_weibo.vocabulary[SpToken.EOS])]
+                pred_response = r[0:_index_of_or_len(r, train_weibo.vocabulary[SpToken.EOS])]
+                output.write("post: %s \n"
+                             "response: %s \n"
+                             "predict: %s \n"
+                             "\n" %
+                             (train_weibo.gen_words_from_indices(post),
+                              train_weibo.gen_words_from_indices(response),
+                              train_weibo.gen_words_from_indices(pred_response)))
 
 
 def average_gradients(tower_grads):
