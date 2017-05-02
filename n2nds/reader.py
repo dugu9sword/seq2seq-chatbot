@@ -73,6 +73,24 @@ class WeiboReader:
         self._batch_pointer = 0 if next_batch_pointer == self.dataset_size else next_batch_pointer
         return data
 
+    def gen_indices_and_lengths(self, sentence):
+        data_indices = []
+        for word in sentence:
+            if word in self.vocabulary:
+                data_indices.append(self.vocabulary[word])
+            else:
+                data_indices.append(self.vocabulary[SpToken.UNK])
+        data_indices.append(self.vocabulary[SpToken.EOS])
+
+        sentence_len = len(data_indices)
+        data_indices.extend([self.vocabulary[SpToken.NIL]] *
+                            (self.config.SEQ_SIZE - sentence_len))
+        # Fill several zeros as response and clone sentences into a batch
+        data_indices = [data_indices, [0] * len(data_indices)]
+        data_indices = [data_indices for _ in range(self.config.BATCH_SIZE)]
+        data_lengths = [[sentence_len, 0] for _ in range(self.config.BATCH_SIZE)]
+        return data_indices, data_lengths
+
     def _gen_length_and_weights(self, post_response_pairs):
         post_lengths = []
         response_lengths = []

@@ -1,30 +1,36 @@
 """
-Multi GPU
+Integrated with flask
 """
 
 import tensorflow as tf
+from flask import Flask
 
-gpu_mode = True
-gpu_nums = 4
+app = Flask(__name__)
 
 
-def build_model():
-    a = tf.Variable([[1.0]])
-    b = tf.Variable([[2.0]])
-    c = tf.matmul(a, b)
-    init = tf.global_variables_initializer()
-    return a, b, c, init
+# model = None
+#
+#
+# def build_model():
+#     model = Model()
 
-cs=[]
-if gpu_mode is True:
-    for i in range(gpu_nums):
-        with tf.device('/gpu:%d' % i):
-            a, b, c, init = build_model()
-            c = c + i
-            cs.append(c)
-else:
-    a, b, c, init = build_model()
 
-with tf.Session(config=tf.ConfigProto(log_device_placement=True)) as sess:
-    sess.run(init)
-    print(sess.run(cs))
+class Model:
+    def __init__(self):
+        self.init_op = tf.global_variables_initializer()
+        self.x = tf.placeholder(name="x", dtype=tf.float32)
+        self.res = self.x * self.x
+
+model = Model()
+sess = tf.Session()
+
+@app.route("/<sentence>")
+def response(sentence):
+    sess.run(model.init_op)
+    response = sess.run(model.res, feed_dict={model.x: float(sentence)})
+    print(response)
+    return str(response)
+
+
+if __name__ == '__main__':
+    app.run()

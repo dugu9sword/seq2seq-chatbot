@@ -5,7 +5,7 @@ import tensorflow as tf
 from n2nds.reader import WeiboReader, SpToken
 from n2nds.seq2seq import Model
 
-data_set_used = 1000000
+data_set_used = 4000000
 batch_size = 500
 gpu_nums = 4
 layer_nums = 4
