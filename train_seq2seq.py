@@ -8,14 +8,14 @@ from n2nds.seq2seq import Model
 
 flags = tf.app.flags
 FLAGS = flags.FLAGS
-flags.DEFINE_integer('dataset', 100, '')
-flags.DEFINE_integer('batch_size', 100, '')
+flags.DEFINE_integer('dataset', 1000000, '')
+flags.DEFINE_integer('batch_size', 500, '')
 flags.DEFINE_integer('layer_num', 4, '')
 flags.DEFINE_integer('gpu_num', 4, 'The gpu_num is the number of gpu used on the machine where'
                                    'the model is trained, instead of the machine where the model'
                                    'is running on. If 0, trained on a cpu, else on gpu(s)')
 flags.DEFINE_string('info', 'normal', '')
-flags.DEFINE_boolean('train_mode', False, '')
+flags.DEFINE_boolean('train_mode', True, '')
 
 # Check gpu available
 gpu_available = False
@@ -50,7 +50,7 @@ train_output_path = "tmp/output_%s/train_output.txt" % model_id
 valid_output_path = "tmp/output_%s/valid_output.txt" % model_id
 
 # Load the data set
-train_weibo = WeiboReader(post_path, response_path, batch_size=FLAGS.dataset)
+train_weibo = WeiboReader(post_path, response_path, batch_size=FLAGS.batch_size)
 train_weibo.config.EMBED_SIZE = 200
 train_weibo.config.UNIT_SIZE = 200
 
@@ -98,7 +98,7 @@ def main():
     # Training code
     if FLAGS.train_mode:
         sv = tf.train.Supervisor(logdir=log_dir_path,
-                                 save_model_secs=10,
+                                 save_model_secs=300,
                                  save_summaries_secs=60,
                                  summary_op=None)
         with sv.managed_session(config=tf.ConfigProto(log_device_placement=True,

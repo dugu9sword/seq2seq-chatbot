@@ -62,7 +62,6 @@ class Model:
 
         logits = tf.matmul(outputs, softmax_w) + softmax_b
         self.pred = tf.argmax(logits, 1)
-        self.fuck_logits = logits
         targets = tf.reshape(self.utter_indices[:, 1], [-1])
         # targets = tf.reshape(utter_indices[:, 1],[config.BATCH_SIZE, config.SEQ_SIZE])
         loss = tf.contrib.legacy_seq2seq.sequence_loss_by_example(
