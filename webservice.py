@@ -3,8 +3,6 @@ import os
 import tensorflow as tf
 
 from flask import Flask
-from n2nds.reader import WeiboReader, SpToken
-from n2nds.seq2seq import Model
 
 app = Flask(__name__)
 
@@ -17,8 +15,8 @@ from n2nds.seq2seq import Model
 
 flags = tf.app.flags
 FLAGS = flags.FLAGS
-flags.DEFINE_integer('dataset', 100, '')
-flags.DEFINE_integer('batch_size', 100, '')
+flags.DEFINE_integer('dataset', 1000000, '')
+flags.DEFINE_integer('batch_size', 500, '')
 flags.DEFINE_integer('layer_num', 4, '')
 flags.DEFINE_integer('gpu_num', 4, 'The gpu_num is the number of gpu used on the machine where'
                                    'the model is trained, instead of the machine where the model'
@@ -59,7 +57,8 @@ train_output_path = "tmp/output_%s/train_output.txt" % model_id
 valid_output_path = "tmp/output_%s/valid_output.txt" % model_id
 
 # Load the data set
-train_weibo = WeiboReader(post_path, response_path, batch_size=FLAGS.dataset)
+train_weibo = WeiboReader(post_path, response_path, batch_size=FLAGS.dataset,
+                          pre_trained_path="pre_trained/wiki_char_200.txt")
 train_weibo.config.EMBED_SIZE = 200
 train_weibo.config.UNIT_SIZE = 200
 
@@ -104,7 +103,8 @@ def build_model():
         with tf.variable_scope("Model", reuse=True):
             valid_model = Model(train_weibo.config, is_train=False)
 
-    sess = tf.Session()
+    sess = tf.Session(config=tf.ConfigProto(log_device_placement=True,
+                                            allow_soft_placement=True, ))
     saver = tf.train.Saver()
     saver.restore(sess, "%s/model.ckpt" % log_dir_path)
 
@@ -119,9 +119,8 @@ def response(sentence):
     feed_dict[valid_model.utter_lengths] = data_lengths
     # feed_dict[valid_model.utter_weights] = data.weights
     pred = sess.run(valid_model.pred, feed_dict).tolist()
-    pred = pred[0: train_weibo.config.SEQ_SIZE]
     pred = pred[0: pred.index(train_weibo.vocabulary[SpToken.EOS])]
-    resp = train_weibo.gen_words_from_indices(pred)
+    resp = train_weibo.gen_words_from_indices(pred).replace(SpToken.UNK, "")
     return resp
 
 

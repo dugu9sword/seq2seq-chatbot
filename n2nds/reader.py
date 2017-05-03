@@ -14,7 +14,7 @@ class WeiboReader:
     def _add_to_vocab(self, word):
         self.vocabulary.setdefault(word, len(self.vocabulary))
 
-    def __init__(self, post_path, response_path, batch_size=-1, pre_trained_path=None):
+    def __init__(self, post_path, response_path, pre_trained_path=None, batch_size=-1):
 
         # Load the file
         f_post = open(post_path)
@@ -86,9 +86,8 @@ class WeiboReader:
         data_indices.extend([self.vocabulary[SpToken.NIL]] *
                             (self.config.SEQ_SIZE - sentence_len))
         # Fill several zeros as response and clone sentences into a batch
-        data_indices = [data_indices, [0] * len(data_indices)]
-        data_indices = [data_indices for _ in range(self.config.BATCH_SIZE)]
-        data_lengths = [[sentence_len, 0] for _ in range(self.config.BATCH_SIZE)]
+        data_indices = [[data_indices, [0] * len(data_indices)]]
+        data_lengths = [[sentence_len, 0]]
         return data_indices, data_lengths
 
     def _gen_length_and_weights(self, post_response_pairs):
@@ -192,13 +191,15 @@ class EmbeddingReader:
 
 
 def main():
-    v, e = EmbeddingReader.load("../pre_trained/wiki_char_200.txt")
+    # v, e = EmbeddingReader.load("../pre_trained/wiki_char_200.txt")
     # print(v)
     # print(e)
-    print(len(v))
+    # print(len(v))
 
-    # reader = WeiboReader("../dataset/stc_weibo_train_post_generated_10",
-    #                      "../dataset/stc_weibo_train_response_generated_10")
+    reader = WeiboReader("../dataset/stc_weibo_train_post_generated_10",
+                         "../dataset/stc_weibo_train_response_generated_10",
+                         pre_trained_path="../pre_trained/wiki_char_200.txt")
+    print(reader.gen_indices_and_lengths("你好啊，玥玥"))
     # reader.set_batch_size(3)
     #
     # for _ in range(4):

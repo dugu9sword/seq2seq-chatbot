@@ -1,5 +1,6 @@
 import tensorflow as tf
 
+
 class Model:
     def __init__(self, config, is_train=True, embedding_init_value=None, num_of_layer=1):
         if embedding_init_value is None:
@@ -26,7 +27,7 @@ class Model:
         enc_state = self.initial_enc_state
         with tf.variable_scope("encoder"):
             enc_outputs, enc_states = tf.nn.dynamic_rnn(encoder, utter_embs[:, 0, :, :], self.utter_lengths[:, 0],
-                                               initial_state=enc_state)
+                                                        initial_state=enc_state)
             # utter_lens = self.utter_lengths[:, 0]
             # mask = tf.logical_and(tf.sequence_mask(utter_lens, config.SEQ_SIZE),
             #                       tf.logical_not(tf.sequence_mask(utter_lens - 1, config.SEQ_SIZE)))
@@ -45,19 +46,52 @@ class Model:
         softmax_w = tf.get_variable("softmax_w", [config.EMBED_SIZE, config.VOCAB_SIZE], dtype=tf.float32)
         softmax_b = tf.get_variable("softmax_b", [config.VOCAB_SIZE], dtype=tf.float32)
 
-        with tf.variable_scope("decoder"):
-            for time_step in range(config.SEQ_SIZE):
-                if time_step == 0:
-                    dec_output, dec_state = decoder(dec_first_input, dec_state)
-                else:
-                    tf.get_variable_scope().reuse_variables()
-                    if is_train:
-                        dec_output, dec_state = decoder(utter_embs[:, 1, time_step - 1, :], dec_state)
+        if is_train:
+            with tf.variable_scope("decoder"):
+                for time_step in range(config.SEQ_SIZE):
+                    if time_step == 0:
+                        dec_output, dec_state = decoder(dec_first_input, dec_state)
                     else:
-                        dec_output_index = tf.argmax(tf.matmul(dec_output, softmax_w) + softmax_b, axis=1)
-                        previous_embedding = tf.nn.embedding_lookup(embedding, dec_output_index)
-                        dec_output, dec_state = decoder(previous_embedding, dec_state)
-                dec_outputs.append(dec_output)  # outputs: SEQ_SIZE * BATCH * EMB_SIZE
+                        tf.get_variable_scope().reuse_variables()
+                        dec_output, dec_state = decoder(utter_embs[:, 1, time_step - 1, :], dec_state)
+                    dec_outputs.append(dec_output)  # outputs: SEQ_SIZE * BATCH * EMB_SIZE
+        else:
+            # suppose batch_size is 1 when decoding
+            # then we employ a batch as a beam
+            beam_size = 10
+            beam_previous_inputs = tf.zeros(shape=[beam_size, config.EMBED_SIZE], dtype=tf.float32)
+            beam_last_indices = tf.zeros(shape=[beam_size], dtype=tf.int32)
+            beam_kept_indices = tf.zeros(shape=[beam_size, config.SEQ_SIZE], dtype=tf.int32)
+            beam_last_probs = tf.zeros(shape=[beam_size], dtype=tf.float32)
+            beam_states = tf.reshape(
+                tf.stack([enc_states for _ in range(beam_size)]), shape=[beam_size, -1])
+
+            with tf.variable_scope("decoder"):
+                for time_step in range(config.SEQ_SIZE):
+                    if time_step != 0:
+                        tf.get_variable_scope().reuse_variables()
+                    beam_outputs, beam_states = decoder(beam_previous_inputs, beam_states)
+
+                    beam_logits = tf.matmul(beam_outputs, softmax_w) + softmax_b  # [beam, vocab]
+                    if time_step == 0:
+                        top_values, top_indices = tf.nn.top_k(beam_logits[0, :], k=beam_size)
+                        beam_last_indices = tf.reshape(top_indices, shape=[beam_size])
+                        beam_last_probs = tf.reshape(top_values, shape=[beam_size])
+                    else:
+                        beam_last_probs = tf.stack([beam_last_probs for _ in range(config.VOCAB_SIZE)], axis=1)
+                        beam_probs = beam_last_probs * beam_logits
+                        beam_probs = tf.reshape(beam_probs, shape=[beam_size * config.VOCAB_SIZE])
+                        top_values, top_indices = tf.nn.top_k(beam_probs, k=beam_size)
+                        beam_last_probs = tf.reshape(top_values, shape=[beam_size])
+                        beam_tmp_kept_indices = tf.zeros_like(beam_kept_indices)
+                        for i, index in enumerate(top_indices):
+                            this_index = tf.mod(index, config.VOCAB_SIZE)
+                            prev_index = tf.div(index, config.VOCAB_SIZE)
+                            beam_last_indices[i] = this_index
+                            beam_tmp_kept_indices[i, 0:time_step] = beam_kept_indices[prev_index, 0:time_step]
+                            beam_tmp_kept_indices[i, time_step] = this_index
+                        beam_kept_indices = beam_tmp_kept_indices
+                    beam_previous_inputs = tf.nn.embedding_lookup(embedding, beam_kept_indices)
 
         outputs = tf.reshape(tf.concat(dec_outputs, axis=1), [-1, config.EMBED_SIZE])
 

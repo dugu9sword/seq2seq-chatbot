@@ -4,18 +4,18 @@ import tensorflow as tf
 from tensorflow.python.client import device_lib
 
 from n2nds.reader import WeiboReader, SpToken
-from n2nds.seq2seq import Model
+from n2nds.beam_seq2seq import Model
 
 flags = tf.app.flags
 FLAGS = flags.FLAGS
-flags.DEFINE_integer('dataset', 1000000, '')
-flags.DEFINE_integer('batch_size', 500, '')
+flags.DEFINE_integer('dataset', 100, '')
+flags.DEFINE_integer('batch_size', 100, '')
 flags.DEFINE_integer('layer_num', 4, '')
 flags.DEFINE_integer('gpu_num', 4, 'The gpu_num is the number of gpu used on the machine where'
                                    'the model is trained, instead of the machine where the model'
                                    'is running on. If 0, trained on a cpu, else on gpu(s)')
 flags.DEFINE_string('info', 'normal', '')
-flags.DEFINE_boolean('train_mode', True, '')
+flags.DEFINE_boolean('train_mode', False, '')
 
 # Check gpu available
 gpu_available = False
