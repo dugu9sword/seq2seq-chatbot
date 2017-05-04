@@ -10,11 +10,11 @@ flags = tf.app.flags
 FLAGS = flags.FLAGS
 flags.DEFINE_integer('dataset', 100, '')
 flags.DEFINE_integer('batch_size', 100, '')
-flags.DEFINE_integer('layer_num', 4, '')
-flags.DEFINE_integer('gpu_num', 4, 'The gpu_num is the number of gpu used on the machine where'
+flags.DEFINE_integer('layer_num', 1, '')
+flags.DEFINE_integer('gpu_num', 0, 'The gpu_num is the number of gpu used on the machine where'
                                    'the model is trained, instead of the machine where the model'
                                    'is running on. If 0, trained on a cpu, else on gpu(s)')
-flags.DEFINE_string('info', 'beam', '')
+flags.DEFINE_string('info', 'normal', '')
 flags.DEFINE_boolean('train_mode', False, '')
 
 # Check gpu available
@@ -137,15 +137,23 @@ def main():
         with tf.Session() as sess:
             saver = tf.train.Saver()
             saver.restore(sess, "%s/model.ckpt" % log_dir_path)
-            batch_test(sess, tf.get_collection("train_model")[0], valid_model)
+            print("Model loaded successfully")
+            # batch_test(sess, tf.get_collection("train_model")[0], valid_model)
 
-            sentence = "你好"
-            data_indices, data_lengths = train_weibo.gen_indices_and_lengths(sentence)
+            # sentence = "你好"
+            # data_indices, data_lengths = train_weibo.gen_indices_and_lengths(sentence)
             feed_dict = dict()
-            feed_dict[valid_model.utter_indices] = data_indices
-            feed_dict[valid_model.utter_lengths] = data_lengths
-            beam_pred = sess.run(valid_model.beam_pred, feed_dict).tolist()
-            print(beam_pred)
+            # feed_dict[valid_model.utter_indices] = data_indices
+            # feed_dict[valid_model.utter_lengths] = data_lengths
+            _b_o_p, _c_i, _i_o_i = sess.run([valid_model.beam_output_probs,
+                                           valid_model.chosen_indices,
+                                           valid_model.indices_of_input], {
+                valid_model.beam_input_indices : [9999, 201, 399],
+                valid_model.beam_input_probs: [0.5, 0.7, 0.7]
+            })
+            print(_b_o_p)
+            print(_c_i)
+            print(_i_o_i)
             # pred = pred[0: pred.index(train_weibo.vocabulary[SpToken.EOS])]
             # resp = train_weibo.gen_words_from_indices(pred)
             # print(resp)

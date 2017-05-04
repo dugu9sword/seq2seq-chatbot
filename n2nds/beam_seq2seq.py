@@ -1,5 +1,6 @@
 import tensorflow as tf
 
+
 class Model:
     def __init__(self, config, is_train=True, embedding_init_value=None, num_of_layer=1):
         if embedding_init_value is None:
@@ -59,12 +60,30 @@ class Model:
                         dec_output, dec_state = decoder(previous_embedding, dec_state)
                 dec_outputs.append(dec_output)  # outputs: SEQ_SIZE * BATCH * EMB_SIZE
 
+        # For beam search
+        self.beam_input_indices = tf.placeholder(shape=[None], dtype=tf.int32)
+        self.beam_input_probs = tf.placeholder(shape=[None], dtype=tf.float32)
+        self.beam_state = decoder.zero_state(batch_size=tf.shape(self.beam_input_indices)[0], dtype=tf.float32)
+
+        beam_input_embs = tf.nn.embedding_lookup(embedding, self.beam_input_indices)
         with tf.variable_scope("decoder"):
             tf.get_variable_scope().reuse_variables()
-            dec_output, dec_state = decoder(dec_first_input, dec_state)
-            dec_output_index = tf.argmax(tf.matmul(dec_output, softmax_w) + softmax_b, axis=1)
-            previous_embedding = tf.nn.embedding_lookup(embedding, dec_output_index)
-            dec_output, dec_state = decoder(previous_embedding, dec_state)
+            beam_output, self.beam_state = decoder(beam_input_embs, self.beam_state)
+            current_probs = tf.matmul(beam_output, softmax_w) + softmax_b
+            total_probs = tf.reshape(current_probs *
+                tf.stack([self.beam_input_probs for _ in range(config.VOCAB_SIZE)], axis=1),
+                shape=[-1])
+            topk_values, topk_indices = tf.nn.top_k(total_probs, k=5)
+            self.indices_of_input = []
+            self.chosen_indices = []
+            for i in range(5):
+                # Not input indices, but indices of input indices
+                self.indices_of_input.append(tf.div(topk_indices[i], config.VOCAB_SIZE))
+                self.chosen_indices.append(tf.mod(topk_indices[i], config.VOCAB_SIZE))
+            self.beam_output_probs = topk_values
+
+
+
 
         outputs = tf.reshape(tf.concat(dec_outputs, axis=1), [-1, config.EMBED_SIZE])
 
