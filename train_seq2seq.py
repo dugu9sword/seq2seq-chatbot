@@ -14,7 +14,7 @@ flags.DEFINE_integer('layer_num', 4, '')
 flags.DEFINE_integer('gpu_num', 4, 'The gpu_num is the number of gpu used on the machine where'
                                    'the model is trained, instead of the machine where the model'
                                    'is running on. If 0, trained on a cpu, else on gpu(s)')
-flags.DEFINE_string('info', 'normal', '')
+flags.DEFINE_string('info', 'real4layer', '')
 flags.DEFINE_boolean('train_mode', True, '')
 
 # Check gpu available
@@ -65,7 +65,8 @@ def multi_concurrent_model(num=1, device='gpu'):
             with tf.name_scope("tower_%d" % i):
                 with tf.variable_scope("Model", reuse=reuse_flag):
                     model = Model(train_weibo.config, is_train=True,
-                                  embedding_init_value=train_weibo.embedding)
+                                  embedding_init_value=train_weibo.embedding,
+                                  num_of_layer=FLAGS.layer_num)
                     reuse_flag = True
                 tf.add_to_collection("train_model", model)
                 tf.add_to_collection("train_cost", model.cost)
@@ -94,7 +95,7 @@ def main():
 
     with tf.name_scope("Valid"):
         with tf.variable_scope("Model", reuse=True):
-            valid_model = Model(train_weibo.config, is_train=False)
+            valid_model = Model(train_weibo.config, is_train=False, num_of_layer=FLAGS.layer_num)
 
     # Training code
     if FLAGS.train_mode:
