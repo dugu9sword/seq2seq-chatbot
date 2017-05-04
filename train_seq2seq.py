@@ -15,7 +15,7 @@ flags.DEFINE_integer('gpu_num', 4, 'The gpu_num is the number of gpu used on the
                                    'the model is trained, instead of the machine where the model'
                                    'is running on. If 0, trained on a cpu, else on gpu(s)')
 flags.DEFINE_string('info', 'real4layer', '')
-flags.DEFINE_boolean('train_mode', True, '')
+flags.DEFINE_boolean('train_mode', False, '')
 
 # Check gpu available
 gpu_available = False
@@ -132,7 +132,8 @@ def main():
 
     # Testing code
     if not FLAGS.train_mode:
-        with tf.Session() as sess:
+        with tf.Session(config=tf.ConfigProto(log_device_placement=True,
+                                              allow_soft_placement=True, )) as sess:
             saver = tf.train.Saver()
             saver.restore(sess, "%s/model.ckpt" % log_dir_path)
             batch_test(sess, tf.get_collection("train_model")[0], valid_model)
