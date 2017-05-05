@@ -28,6 +28,7 @@ class Model:
         with tf.variable_scope("encoder"):
             enc_outputs, enc_states = tf.nn.dynamic_rnn(encoder, utter_embs[:, 0, :, :], self.utter_lengths[:, 0],
                                                         initial_state=enc_state)
+        self.encoder_state = enc_states
             # utter_lens = self.utter_lengths[:, 0]
             # mask = tf.logical_and(tf.sequence_mask(utter_lens, config.SEQ_SIZE),
             #                       tf.logical_not(tf.sequence_mask(utter_lens - 1, config.SEQ_SIZE)))
@@ -60,33 +61,23 @@ class Model:
                         dec_output, dec_state = decoder(previous_embedding, dec_state)
                 dec_outputs.append(dec_output)  # outputs: SEQ_SIZE * BATCH * EMB_SIZE
 
-        # For beam search
-        self.beam_input_indices = tf.placeholder(shape=[None], dtype=tf.int32)
-        self.beam_input_probs = tf.placeholder(shape=[None], dtype=tf.float32)
-        self.beam_state = decoder.zero_state(batch_size=tf.shape(self.beam_input_indices)[0], dtype=tf.float32)
-
-        beam_input_embs = tf.nn.embedding_lookup(embedding, self.beam_input_indices)
+        # Begin --- For beam search
+        # Only accept state with batch size = 1
+        self.b_input_index = tf.placeholder(shape=[], dtype=tf.int32)
+        self.b_input_state = decoder.zero_state(batch_size= 1, dtype=tf.float32)
+        # input_emb = tf.cond(tf.equal(1, self.b_input_index),
+        #                     lambda :tf.zeros([1, config.EMBED_SIZE]),
+        #                     lambda :tf.nn.embedding_lookup(embedding, self.b_input_index))
+        input_emb = tf.nn.embedding_lookup(embedding, self.b_input_index)
+        input_emb = tf.reshape(input_emb, shape=[1, config.EMBED_SIZE])
         with tf.variable_scope("decoder"):
             tf.get_variable_scope().reuse_variables()
-            beam_output, self.beam_state = decoder(beam_input_embs, self.beam_state)
-            current_probs = tf.matmul(beam_output, softmax_w) + softmax_b
-            total_probs = tf.reshape(current_probs *
-                tf.stack([self.beam_input_probs for _ in range(config.VOCAB_SIZE)], axis=1),
-                shape=[-1])
-            topk_values, topk_indices = tf.nn.top_k(total_probs, k=5)
-            self.indices_of_input = []
-            self.chosen_indices = []
-            for i in range(5):
-                # Not input indices, but indices of input indices
-                self.indices_of_input.append(tf.div(topk_indices[i], config.VOCAB_SIZE))
-                self.chosen_indices.append(tf.mod(topk_indices[i], config.VOCAB_SIZE))
-            self.beam_output_probs = topk_values
+            b_output, self.b_output_state = decoder(input_emb, self.b_input_state)
+            self.b_probs = tf.nn.softmax(tf.matmul(b_output, softmax_w) + softmax_b)
 
-
-
+        # End --- For beam search
 
         outputs = tf.reshape(tf.concat(dec_outputs, axis=1), [-1, config.EMBED_SIZE])
-
         logits = tf.matmul(outputs, softmax_w) + softmax_b
         self.pred = tf.argmax(logits, 1)
         targets = tf.reshape(self.utter_indices[:, 1], [-1])
