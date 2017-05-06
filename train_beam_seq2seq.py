@@ -12,12 +12,12 @@ flags = tf.app.flags
 FLAGS = flags.FLAGS
 flags.DEFINE_integer('dataset', 100, '')
 flags.DEFINE_integer('batch_size', 100, '')
-flags.DEFINE_integer('layer_num', 4, '')
+flags.DEFINE_integer('layer_num', 1, '')
 flags.DEFINE_integer('gpu_num', 4, 'The gpu_num is the number of gpu used on the machine where'
                                    'the model is trained, instead of the machine where the model'
                                    'is running on. If 0, trained on a cpu, else on gpu(s)')
 flags.DEFINE_string('info', 'normal', '')
-flags.DEFINE_boolean('train_mode', False, '')
+flags.DEFINE_boolean('train_mode', True, '')
 
 # Check gpu available
 gpu_available = False
@@ -136,14 +136,15 @@ def main():
 
     # Testing code
     if not FLAGS.train_mode:
-        with tf.Session() as sess:
+        with tf.Session(config=tf.ConfigProto(log_device_placement=True,
+                                              allow_soft_placement=True, )) as sess:
             saver = tf.train.Saver()
             saver.restore(sess, "%s/model.ckpt" % log_dir_path)
             print("Model loaded successfully")
             # batch_test(sess, tf.get_collection("train_model")[0], valid_model)
 
 
-            sentence = "中国移动营销行来发展报告"
+            sentence = "中国移动营销行来发展报告上"
 
             # Greedy
             data_indices, data_lengths = train_weibo.gen_indices_and_lengths(sentence)
@@ -157,79 +158,105 @@ def main():
             print("Greedy Result:")
             print(resp)
 
-
             # Beam
-            data_indices, data_lengths = train_weibo.gen_indices_and_lengths(sentence)
-            enc_state = sess.run(
-                [
-                    valid_model.encoder_state
-                ],
-                feed_dict={
-                    valid_model.utter_indices: data_indices,
-                    valid_model.utter_lengths: data_lengths
-                }
-            )
-            # print(enc_state)
-            k = 1
-            topk_nodes = []
-            for time_step in range(30):
-                if time_step == 0:
-                    bs, bp = sess.run(
-                        [
-                            valid_model.b_output_state,
-                            valid_model.b_probs
-                        ],
-                        {
-                            valid_model.b_input_index: 1,
-                            valid_model.b_input_state: enc_state
-                        }
-                    )
-                    bp = bp[0]  # bp is [[]], we fetch batch 0
-                    indices = list(reversed(np.argpartition(bp, -k)[-k:]))
-                    probs = list(reversed(np.partition(bp, -k)[-k:]))
-                    for i in range(k):
-                        topk_nodes.append(BeamSearchNode(index=indices[i],
-                                                         prob=probs[i],
-                                                         state=bs))
-                else:
-                    topk_prob_table = []
-                    topk_state_list=[]
-                    for topk_node in topk_nodes:
+            while True:
+                beam = int(input("beam: (If 0, exit)"))
+                if beam==0:
+                    break
+                sentence = input("Please input the sentence:")
+                # beam = 10
+
+                data_indices, data_lengths = train_weibo.gen_indices_and_lengths(sentence)
+                enc_state = sess.run(
+                    [
+                        valid_model.encoder_state
+                    ],
+                    feed_dict={
+                        valid_model.utter_indices: data_indices,
+                        valid_model.utter_lengths: data_lengths
+                    }
+                )
+                # print(enc_state)
+                k = beam
+                topk_nodes = []
+                is_eos=lambda node: node.index==train_weibo.vocabulary[SpToken.EOS]
+                for time_step in range(30):
+                    if time_step == 0:
                         bs, bp = sess.run(
                             [
                                 valid_model.b_output_state,
                                 valid_model.b_probs
                             ],
                             {
-                                valid_model.b_input_index: topk_node.index,
-                                valid_model.b_input_state: topk_node.state
+                                valid_model.b_input_index: 0,
+                                valid_model.b_input_state: enc_state
                             }
                         )
-                        bp = np.array(bp[0])
-                        topk_prob_table.append(bp * topk_node.prob)
-                        topk_state_list.append(bs)
-                    flatten_probs = np.reshape(topk_prob_table, -1)
-                    indices = np.argpartition(flatten_probs, -k)[-k:]
-                    chosen_indices = indices % train_weibo.config.VOCAB_SIZE
-                    prev_indices_in_topk = indices // train_weibo.config.VOCAB_SIZE
-                    probs = np.partition(flatten_probs, -k)[-k:]
-                    print(indices)
-                    print(probs)
+                        bp = bp[0]  # bp is [[]], we fetch batch 0
+                        indices = list(reversed(np.argpartition(bp, -k)[-k:]))
+                        probs = list(reversed(np.partition(bp, -k)[-k:]))
+                        for i in range(k):
+                            topk_nodes.append(BeamSearchNode(index=indices[i],
+                                                             prob=probs[i],
+                                                             state=bs))
 
-                    tmp_topk_nodes=[]
-                    for i in range(k):
-                        node = BeamSearchNode(index=chosen_indices[i],
-                                              state=topk_state_list[prev_indices_in_topk[i]],
-                                              prob=probs[i],
-                                              prev_node=topk_nodes[i])
-                        tmp_topk_nodes.append(node)
+                    else:
+                        topk_prob_table = []
+                        topk_state_list=[]
+                        for topk_node in topk_nodes:
+                            bs, bp = sess.run(
+                                [
+                                    valid_model.b_output_state,
+                                    valid_model.b_probs
+                                ],
+                                {
+                                    valid_model.b_input_index: topk_node.index,
+                                    valid_model.b_input_state: topk_node.state
+                                }
+                            )
+                            if is_eos(topk_node):
+                                topk_prob_table.append(np.zeros(train_weibo.config.VOCAB_SIZE))
+                                topk_state_list.append(bs)
+                            else:
+                                bp = np.array(bp[0])
+                                topk_prob_table.append(bp * topk_node.prob)
+                                topk_state_list.append(bs)
+                        flatten_probs = np.reshape(topk_prob_table, -1)
+                        indices = np.argpartition(flatten_probs, -k)[-k:]
+                        chosen_indices = indices % train_weibo.config.VOCAB_SIZE
+                        prev_indices_in_topk = indices // train_weibo.config.VOCAB_SIZE
+                        probs = np.partition(flatten_probs, -k)[-k:]
 
-                    topk_nodes=tmp_topk_nodes
-                    print(train_weibo.gen_words_from_indices(chosen_indices))
+                        tmp_topk_nodes=[]
+                        for i in range(k):
+                            node = BeamSearchNode(index=chosen_indices[i],
+                                                  state=topk_state_list[prev_indices_in_topk[i]],
+                                                  prob=probs[i],
+                                                  prev_node=topk_nodes[prev_indices_in_topk[i]])
+                            tmp_topk_nodes.append(node)
+                        for topk_node in topk_nodes:
+                            if is_eos(topk_node):
+                                tmp_topk_nodes.append(topk_node)
+                        topk_nodes=sorted(tmp_topk_nodes, key=lambda node:node.prob, reverse=True)[0:k]
 
-            print("Beam result: ")
-            for node in topk_nodes:
-                print(train_weibo.gen_words_from_indices(node.get_sentence_indices()))
+                    print("beam: ")
+                    for node in topk_nodes:
+                        print("prob: %f, node: %d %s, prev node: %d %s,"
+                              %(node.prob,
+                                node.index,
+                                train_weibo.gen_words_from_indices([node.index]),
+                                -1 if node.prev_node is None else node.prev_node.index,
+                                "<BOS>" if node.prev_node is None else
+                                    train_weibo.gen_words_from_indices([node.prev_node.index])))
+
+                print("Beam result: ")
+                for node in topk_nodes:
+                    print("prob %f with %s"%(
+                        node.prob,
+                        train_weibo.gen_words_from_indices(node.get_sentence_indices())))
+
+
+
 
 class BeamSearchNode:
     def __init__(self, index, prob, state, prev_node=None):
@@ -240,7 +267,7 @@ class BeamSearchNode:
 
     def get_sentence_indices(self):
         if self.prev_node is None:
-            return []
+            return [self.index]
         else:
             lst = self.prev_node.get_sentence_indices()
             lst.append(self.index)

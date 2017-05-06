@@ -65,16 +65,15 @@ class Model:
         # Only accept state with batch size = 1
         self.b_input_index = tf.placeholder(shape=[], dtype=tf.int32)
         self.b_input_state = decoder.zero_state(batch_size= 1, dtype=tf.float32)
-        # input_emb = tf.cond(tf.equal(1, self.b_input_index),
-        #                     lambda :tf.zeros([1, config.EMBED_SIZE]),
-        #                     lambda :tf.nn.embedding_lookup(embedding, self.b_input_index))
-        input_emb = tf.nn.embedding_lookup(embedding, self.b_input_index)
+        input_emb = tf.cond(tf.equal(0, self.b_input_index),
+                            lambda :tf.zeros([1, config.EMBED_SIZE]),
+                            lambda :tf.nn.embedding_lookup(embedding, self.b_input_index))
+        # input_emb = tf.nn.embedding_lookup(embedding, self.b_input_index)
         input_emb = tf.reshape(input_emb, shape=[1, config.EMBED_SIZE])
         with tf.variable_scope("decoder"):
             tf.get_variable_scope().reuse_variables()
             b_output, self.b_output_state = decoder(input_emb, self.b_input_state)
             self.b_probs = tf.nn.softmax(tf.matmul(b_output, softmax_w) + softmax_b)
-
         # End --- For beam search
 
         outputs = tf.reshape(tf.concat(dec_outputs, axis=1), [-1, config.EMBED_SIZE])

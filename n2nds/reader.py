@@ -5,7 +5,6 @@ import random
 
 class SpToken:
     EOS = "<end>"
-    BOS = "<begin>"
     NIL = "<no word>"
     UNK = "<unknown word>"
 
@@ -14,7 +13,7 @@ class WeiboReader:
     def _add_to_vocab(self, word):
         self.vocabulary.setdefault(word, len(self.vocabulary))
 
-    def __init__(self, post_path, response_path, pre_trained_path=None, batch_size=-1):
+    def __init__(self, post_path, response_path, pre_trained_path, batch_size=-1):
 
         # Load the file
         f_post = open(post_path)
@@ -31,7 +30,6 @@ class WeiboReader:
         self.embedding = None
         if pre_trained_path is None:
             self.vocabulary = {}
-            self._add_to_vocab(SpToken.BOS)
             self._add_to_vocab(SpToken.EOS)
             self._add_to_vocab(SpToken.NIL)
             self._add_to_vocab(SpToken.UNK)
@@ -162,7 +160,6 @@ class EmbeddingReader:
         vocabulary = dict()
         embeddings = list()
 
-        _add_to_vocab(SpToken.BOS)
         _add_to_vocab(SpToken.EOS)
         _add_to_vocab(SpToken.NIL)
         _add_to_vocab(SpToken.UNK)
