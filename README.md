@@ -3,9 +3,7 @@ A python based chatbot implemented with TensorFlow.
 
 You may need an GPU to run the model.
 
-
-
-##Dependencies
+## Dependencies
 
 - Python 3.5+
 - TensorFlow 1.1.0
