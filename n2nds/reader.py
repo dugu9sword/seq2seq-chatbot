@@ -1,23 +1,24 @@
-from n2nds.config import Config
+#from n2nds.config import Config
 from n2nds.data import Data
 import random
 
 
 class SpToken:
     EOS = "<end>"
+    BOS = "<begin>"
     NIL = "<no word>"
     UNK = "<unknown word>"
 
 
-class WeiboReader:
+class DataSetReader:
     def _add_to_vocab(self, word):
         self.vocabulary.setdefault(word, len(self.vocabulary))
 
-    def __init__(self, post_path, response_path, pre_trained_path, batch_size=-1):
+    def __init__(self, post_path, response_path, pre_trained_path=None):
 
         # Load the file
-        f_post = open(post_path)
-        f_response = open(response_path)
+        f_post = open(post_path, encoding="utf-8", errors="ignore")
+        f_response = open(response_path,  encoding="utf-8", errors="ignore")
         self._posts = []
         self._responses = []
         for post in f_post.readlines():
@@ -30,6 +31,7 @@ class WeiboReader:
         self.embedding = None
         if pre_trained_path is None:
             self.vocabulary = {}
+            self._add_to_vocab(SpToken.BOS)
             self._add_to_vocab(SpToken.EOS)
             self._add_to_vocab(SpToken.NIL)
             self._add_to_vocab(SpToken.UNK)
@@ -45,25 +47,20 @@ class WeiboReader:
             self._gen_length_and_weights(zip(self._posts, self._responses))
 
         # Generate the config
-        self.config = Config()
-        self.config.BATCH_SIZE = len(self._indices) if batch_size == -1 else batch_size
-        self.config.SEQ_SIZE = len(self._indices[0][0])
-        self.config.VOCAB_SIZE = len(self.vocabulary)
-        self.config.EMBED_SIZE = 20
-        self.config.UNIT_SIZE = 20
+        #self.config = Config()
+        #self.config.BATCH_SIZE = len(self._indices) if batch_size == -1 else batch_size
+        #self.config.SEQ_SIZE = len(self._indices[0][0])
+        #self.config.VOCAB_SIZE = len(self.vocabulary)
+        #self.config.EMBED_SIZE = 20
+        #self.config.UNIT_SIZE = 20
+        self.SEQ_SIZE = len(self._indices[0][0])
 
         # Some variable for batch generation
         self._batch_pointer = 0
         self.dataset_size = len(self._indices)
-        self._batch_size = batch_size
 
-        if self.dataset_size % self._batch_size:
-            print("data set size is %d, batch size is %d, batch size must be divided by total size" % (
-                self.dataset_size, self._batch_size))
-            exit(0)
-
-    def next_batch(self):
-        next_batch_pointer = min(self._batch_pointer + self._batch_size, self.dataset_size)
+    def next_batch(self, batch_size):
+        next_batch_pointer = min(self._batch_pointer + batch_size, self.dataset_size)
         data = Data()
         data.indices = self._indices[self._batch_pointer:next_batch_pointer]
         data.lengths = self._lengths[self._batch_pointer:next_batch_pointer]
@@ -82,7 +79,7 @@ class WeiboReader:
 
         sentence_len = len(data_indices)
         data_indices.extend([self.vocabulary[SpToken.NIL]] *
-                            (self.config.SEQ_SIZE - sentence_len))
+                            (self.SEQ_SIZE - sentence_len))
         # Fill several zeros as response and clone sentences into a batch
         data_indices = [[data_indices, [0] * len(data_indices)]]
         data_lengths = [[sentence_len, 0]]
@@ -97,6 +94,7 @@ class WeiboReader:
         max_length = 0
 
         # Generate indices from words
+        idx = 0
         for post, response in post_response_pairs:
             post_index = []
             response_index = []
@@ -116,6 +114,8 @@ class WeiboReader:
 
             post_indices.append(post_index)
             response_indices.append(response_index)
+            idx += 1
+            print("Load sentence %d " % idx)
 
         # Append NIL to the rest of indices
         nil_index = self.vocabulary[SpToken.NIL]
@@ -160,13 +160,14 @@ class EmbeddingReader:
         vocabulary = dict()
         embeddings = list()
 
+        _add_to_vocab(SpToken.BOS)
         _add_to_vocab(SpToken.EOS)
         _add_to_vocab(SpToken.NIL)
         _add_to_vocab(SpToken.UNK)
         for i in range(len(vocabulary)):
             _add_to_embed(_generate_random(200))
 
-        f = open(path)
+        f = open(path,  encoding="utf-8",  errors="ignore")
 
         i = 0
         while True:
@@ -186,28 +187,3 @@ class EmbeddingReader:
         print("Embedding loaded successfully.")
         return vocabulary, embeddings
 
-
-def main():
-    # v, e = EmbeddingReader.load("../pre_trained/wiki_char_200.txt")
-    # print(v)
-    # print(e)
-    # print(len(v))
-
-    reader = WeiboReader("../dataset/stc_weibo_train_post_generated_10",
-                         "../dataset/stc_weibo_train_response_generated_10",
-                         pre_trained_path="../pre_trained/wiki_char_200.txt")
-    print(reader.gen_indices_and_lengths("你好啊，玥玥"))
-    # reader.set_batch_size(3)
-    #
-    # for _ in range(4):
-    #     print("~~~")
-    #     data = reader.next_batch()
-    #     print(data.indices)
-    #     print(data.lengths)
-    #     print(data.weights)
-    #     print(reader.config)
-    #     # print(reader.vocabulary)
-
-
-if __name__ == '__main__':
-    main()
